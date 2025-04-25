@@ -35,36 +35,32 @@ bot = Client("bot", bot_token=os.getenv("BOT_TOKEN"))
 # Scheduler for daily cleanup
 scheduler = AsyncIOScheduler(timezone=IST)
 
-# Get list of chat_ids from environment variable
-CHAT_IDS = list(map(int, os.getenv("CHAT_IDS", "-1004660096743,-1002633080719").split(",")))
+# Get the single chat_id from environment variable
+CHAT_ID = int(os.getenv("CHAT_ID", -1001234567890))  # Default value if not set
 
 # Function to remove non-admin users
 async def remove_users():
     async with bot:
         print("Starting the cleanup process...")
-
-        # Loop through all group chat IDs
-        for chat_id in CHAT_IDS:
-            print(f"Cleaning group {chat_id}...")
-            try:
-                # Fetch all members (excluding admins)
-                members = await bot.get_chat_members(chat_id)
-                for member in members:
-                    if not member.status == "administrator":
-                        try:
-                            await bot.kick_chat_member(chat_id, member.user.id)
-                            print(f"Removed: {member.user.id} from {chat_id}")
-                        except Exception as e:
-                            print(f"Error removing {member.user.id} from {chat_id}: {e}")
-                print(f"Cleanup completed for group {chat_id} at {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')}.")
-            except Exception as e:
-                print(f"Error processing group {chat_id}: {e}")
+        try:
+            # Fetch all members (excluding admins)
+            members = await bot.get_chat_members(CHAT_ID)
+            for member in members:
+                if not member.status == "administrator":
+                    try:
+                        await bot.kick_chat_member(CHAT_ID, member.user.id)
+                        print(f"Removed: {member.user.id} from {CHAT_ID}")
+                    except Exception as e:
+                        print(f"Error removing {member.user.id} from {CHAT_ID}: {e}")
+            print(f"Cleanup completed for group {CHAT_ID} at {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')}.")
+        except Exception as e:
+            print(f"Error processing group {CHAT_ID}: {e}")
 
 # Function to schedule the cleanup at a specific time
 def schedule_cleanup():
     cleanup_time = datetime.combine(datetime.today(), datetime.min.time()).replace(hour=REMOVE_HOUR, minute=REMOVE_MINUTE)
     scheduler.add_job(remove_users, 'interval', days=1, start_date=cleanup_time)
-    print(f"Scheduled cleanup at {REMOVE_HOUR}:{REMOVE_MINUTE} IST for all groups.")
+    print(f"Scheduled cleanup at {REMOVE_HOUR}:{REMOVE_MINUTE} IST for the group.")
 
 # Start the bot and scheduler
 async def main():
