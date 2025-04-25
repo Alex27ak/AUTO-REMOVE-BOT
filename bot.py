@@ -3,7 +3,7 @@ import time
 import logging
 import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.daily import DailyTrigger  # Corrected import
+from apscheduler.triggers.cron import CronTrigger  # Use CronTrigger instead of DailyTrigger
 from pyrogram import Client
 from pyrogram.errors import BadMsgNotification
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
@@ -45,8 +45,8 @@ async def cleanup_task():
 # Define the job scheduler
 def setup_scheduler():
     scheduler = AsyncIOScheduler()
-    # Schedule cleanup task every day at 12:00 AM IST
-    scheduler.add_job(cleanup_task, DailyTrigger(hour=0, minute=0, timezone="Asia/Kolkata"))
+    # Schedule cleanup task every day at 12:00 AM IST using CronTrigger
+    scheduler.add_job(cleanup_task, CronTrigger(hour=0, minute=0, timezone="Asia/Kolkata"))
     scheduler.start()
 
 # Main function to run the bot
