@@ -1,81 +1,58 @@
-import os
-import threading
 import asyncio
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
 from pyrogram import Client
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-import pytz
+from apscheduler.triggers.daily import Daily
 from datetime import datetime
 
-# Set your desired cleanup time in hours and minutes (24-hour format)
-REMOVE_HOUR = int(os.getenv("REMOVE_HOUR", 0))  # Default: 0 (12 AM)
-REMOVE_MINUTE = int(os.getenv("REMOVE_MINUTE", 0))  # Default: 0 minutes
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
 
-# Set the timezone to IST (Indian Standard Time)
-IST = pytz.timezone("Asia/Kolkata")
+# Initialize bot with credentials from .env file
+API_ID = os.getenv("API_ID")
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = int(os.getenv("CHAT_ID"))
 
-# Basic HTTP server to pass health checks
-class HealthCheckHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"OK")
+bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-def run_health_check_server():
-    server_address = ('', 8000)
-    httpd = HTTPServer(server_address, HealthCheckHandler)
-    httpd.serve_forever()
-
-# Run health check server in a separate thread
-threading.Thread(target=run_health_check_server, daemon=True).start()
-
-# Initialize the bot with your API token
-bot = Client("bot", bot_token=os.getenv("BOT_TOKEN"))
-
-# Scheduler for daily cleanup
-scheduler = AsyncIOScheduler(timezone=IST)
-
-# Get the single chat_id from environment variable
-CHAT_ID = int(os.getenv("CHAT_ID", -1001234567890))  # Default value if not set
-
-# Function to remove non-admin users
+# Function to remove users
 async def remove_users():
     async with bot:
-        print("Starting the cleanup process...")
+        # Get all members of the group (except admins)
+        members = await bot.get_chat_members(CHAT_ID)
+        for member in members:
+            if not member.status == "administrator":
+                try:
+                    await bot.kick_chat_member(CHAT_ID, member.user.id)
+                    print(f"Removed user {member.user.id}")
+                except Exception as e:
+                    print(f"Failed to remove user {member.user.id}: {e}")
+
+# Function to send the daily cleanup message
+async def send_cleanup_message():
+    async with bot:
         try:
-            # Fetch all members (excluding admins)
-            members = await bot.get_chat_members(CHAT_ID)
-            for member in members:
-                if not member.status == "administrator":
-                    try:
-                        await bot.kick_chat_member(CHAT_ID, member.user.id)
-                        print(f"Removed: {member.user.id} from {CHAT_ID}")
-                    except Exception as e:
-                        print(f"Error removing {member.user.id} from {CHAT_ID}: {e}")
-            print(f"Cleanup completed for group {CHAT_ID} at {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')}.")
+            await bot.send_message(CHAT_ID, "Daily cleanup in progress. All non-admin users will be removed.")
         except Exception as e:
-            print(f"Error processing group {CHAT_ID}: {e}")
+            print(f"Error sending cleanup message: {e}")
 
-# Function to schedule the cleanup at a specific time
-def schedule_cleanup():
-    cleanup_time = datetime.combine(datetime.today(), datetime.min.time()).replace(hour=REMOVE_HOUR, minute=REMOVE_MINUTE)
-    scheduler.add_job(remove_users, 'interval', days=1, start_date=cleanup_time)
-    print(f"Scheduled cleanup at {REMOVE_HOUR}:{REMOVE_MINUTE} IST for the group.")
-
-# Start the bot and scheduler
-async def main():
-    await bot.start()
-    print(f"Bot started at {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S')}")
-    
-    schedule_cleanup()
-
-    # Run the scheduler in the background
+# Scheduler to run the removal at 12:00 AM IST daily
+def start_scheduler():
+    scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
+    # Schedule the daily task
+    scheduler.add_job(remove_users, Daily(hour=0, minute=0, second=0))  # Set to 12:00 AM IST
+    scheduler.add_job(send_cleanup_message, Daily(hour=0, minute=0, second=30))  # Send message at 12:00 AM + 30s
     scheduler.start()
 
-    try:
-        await asyncio.Event().wait()  # Keep the bot running
-    except (KeyboardInterrupt, SystemExit):
-        await bot.stop()
+# Start the bot
+async def main():
+    await bot.start()
+    print("Bot started. Scheduled daily cleanup at 00:00 IST.")
+    start_scheduler()
+    while True:
+        await asyncio.sleep(3600)  # Keep the bot running
 
 if __name__ == "__main__":
     asyncio.run(main())
