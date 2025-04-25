@@ -4,7 +4,6 @@ import asyncio
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pyrogram import Client
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 import pytz
 from datetime import datetime
 
@@ -40,7 +39,6 @@ scheduler = AsyncIOScheduler(timezone=IST)
 async def remove_users():
     async with bot:
         print("Starting the cleanup process...")
-        # Get the list of all members in the group
         chat_id = os.getenv("CHAT_ID", None)  # Provide your group chat ID here if needed
 
         # Fetch all members (excluding admins)
