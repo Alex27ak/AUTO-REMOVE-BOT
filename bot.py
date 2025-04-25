@@ -1,58 +1,71 @@
-import asyncio
 import os
-from pyrogram import Client
+import time
+import logging
+import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger  # Updated import
-from datetime import datetime
+from apscheduler.triggers.daily import Daily
+from pyrogram import Client
+from pyrogram.errors import BadMsgNotification
+from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
 
-# Load environment variables from .env file
-from dotenv import load_dotenv
-load_dotenv()
+# Initialize logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Initialize bot with credentials from .env file
-API_ID = os.getenv("API_ID")
-API_HASH = os.getenv("API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = int(os.getenv("CHAT_ID"))
+# Environment variables
+API_ID = os.getenv('API_ID')
+API_HASH = os.getenv('API_HASH')
+BOT_TOKEN = os.getenv('BOT_TOKEN')
 
-bot = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+# Define the bot client
+bot = Client("telegram_cleanup_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
-# Function to remove users
-async def remove_users():
-    async with bot:
-        # Get all members of the group (except admins)
-        members = await bot.get_chat_members(CHAT_ID)
-        for member in members:
-            if not member.status == "administrator":
-                try:
-                    await bot.kick_chat_member(CHAT_ID, member.user.id)
-                    print(f"Removed user {member.user.id}")
-                except Exception as e:
-                    print(f"Failed to remove user {member.user.id}: {e}")
+# Sync time with NTP server
+def sync_time():
+    import ntplib
+    client = ntplib.NTPClient()
+    response = client.request('pool.ntp.org')
+    return response.tx_time
 
-# Function to send the daily cleanup message
-async def send_cleanup_message():
-    async with bot:
-        try:
-            await bot.send_message(CHAT_ID, "Daily cleanup in progress. All non-admin users will be removed.")
-        except Exception as e:
-            print(f"Error sending cleanup message: {e}")
+# Retry logic for bot start
+async def start_bot():
+    try:
+        await bot.start()
+        logger.info("Bot started successfully.")
+    except BadMsgNotification as e:
+        logger.error(f"Error starting bot: {e}")
+        time.sleep(5)  # Retry after 5 seconds
+        await start_bot()
 
-# Scheduler to run the removal at 12:00 AM IST daily
-def start_scheduler():
-    scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    # Schedule the daily task using IntervalTrigger
-    scheduler.add_job(remove_users, IntervalTrigger(hours=24, minutes=0, seconds=0, start_date=datetime.now()))  # Run every 24 hours
-    scheduler.add_job(send_cleanup_message, IntervalTrigger(hours=24, minutes=0, seconds=30, start_date=datetime.now()))  # Send message 30 seconds after
+# Define a simple cleanup task
+async def cleanup_task():
+    logger.info("Running cleanup task.")
+    # Add your cleanup logic here
+
+# Define the job scheduler
+def setup_scheduler():
+    scheduler = AsyncIOScheduler()
+    # Schedule cleanup task every day at 12:00 AM IST
+    scheduler.add_job(cleanup_task, Daily(hour=0, minute=0, timezone="Asia/Kolkata"))
     scheduler.start()
 
-# Start the bot
+# Main function to run the bot
 async def main():
-    await bot.start()
-    print("Bot started. Scheduled daily cleanup at 00:00 IST.")
-    start_scheduler()
-    while True:
-        await asyncio.sleep(3600)  # Keep the bot running
+    try:
+        # Sync time before starting bot
+        sync_time()
+        await start_bot()
+
+        # Setup scheduler for daily tasks
+        setup_scheduler()
+
+        # Run the bot until it's stopped
+        await bot.idle()
+
+    except Exception as e:
+        logger.error(f"An error occurred: {e}")
+        time.sleep(5)  # Retry after 5 seconds
+        await main()  # Retry the connection
 
 if __name__ == "__main__":
     asyncio.run(main())
