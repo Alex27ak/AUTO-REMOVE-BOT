@@ -1,71 +1,43 @@
 import os
-import time
-import logging
 import asyncio
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger  # Use CronTrigger instead of DailyTrigger
 from pyrogram import Client
-from pyrogram.errors import BadMsgNotification
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from pytz import timezone
+from dotenv import load_dotenv
 
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+load_dotenv()
 
-# Environment variables
-API_ID = os.getenv('API_ID')
-API_HASH = os.getenv('API_HASH')
-BOT_TOKEN = os.getenv('BOT_TOKEN')
+API_ID = int(os.getenv("API_ID"))
+API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROUP_ID = int(os.getenv("GROUP_ID"))
 
-# Define the bot client
-bot = Client("telegram_cleanup_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+bot = Client("cleanup_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+scheduler = AsyncIOScheduler(timezone=timezone("Asia/Kolkata"))
 
-# Sync time with NTP server
-def sync_time():
-    import ntplib
-    client = ntplib.NTPClient()
-    response = client.request('pool.ntp.org')
-    return response.tx_time
+async def remove_non_admins():
+    async with bot:
+        admins = await bot.get_chat_members(GROUP_ID, filter="administrators")
+        admin_ids = [admin.user.id for admin in admins]
 
-# Retry logic for bot start
-async def start_bot():
-    try:
-        await bot.start()
-        logger.info("Bot started successfully.")
-    except BadMsgNotification as e:
-        logger.error(f"Error starting bot: {e}")
-        time.sleep(5)  # Retry after 5 seconds
-        await start_bot()
+        async for member in bot.get_chat_members(GROUP_ID):
+            if member.user.id not in admin_ids:
+                try:
+                    await bot.kick_chat_member(GROUP_ID, member.user.id)
+                    await bot.unban_chat_member(GROUP_ID, member.user.id)  # optional: allow rejoining
+                except Exception as e:
+                    print(f"Error removing {member.user.id}: {e}")
 
-# Define a simple cleanup task
-async def cleanup_task():
-    logger.info("Running cleanup task.")
-    # Add your cleanup logic here
+@scheduler.scheduled_job("cron", hour=0, minute=0)
+async def scheduled_job():
+    print("Running cleanup job...")
+    await remove_non_admins()
 
-# Define the job scheduler
-def setup_scheduler():
-    scheduler = AsyncIOScheduler()
-    # Schedule cleanup task every day at 12:00 AM IST using CronTrigger
-    scheduler.add_job(cleanup_task, CronTrigger(hour=0, minute=0, timezone="Asia/Kolkata"))
-    scheduler.start()
-
-# Main function to run the bot
 async def main():
-    try:
-        # Sync time before starting bot
-        sync_time()
-        await start_bot()
+    await bot.start()
+    scheduler.start()
+    print("Bot started and scheduled.")
+    await idle()
 
-        # Setup scheduler for daily tasks
-        setup_scheduler()
-
-        # Run the bot until it's stopped
-        await bot.idle()
-
-    except Exception as e:
-        logger.error(f"An error occurred: {e}")
-        time.sleep(5)  # Retry after 5 seconds
-        await main()  # Retry the connection
-
-if __name__ == "__main__":
-    asyncio.run(main())
+from pyrogram.idle import idle
+asyncio.run(main())
