@@ -36,7 +36,7 @@ bot = Client("bot", bot_token=os.getenv("BOT_TOKEN"))
 scheduler = AsyncIOScheduler(timezone=IST)
 
 # Get list of chat_ids from environment variable
-CHAT_IDS = list(map(int, os.getenv("CHAT_IDS", "").split(",")))
+CHAT_IDS = list(map(int, os.getenv("CHAT_IDS", "-1004660096743,-1002633080719").split(",")))
 
 # Function to remove non-admin users
 async def remove_users():
