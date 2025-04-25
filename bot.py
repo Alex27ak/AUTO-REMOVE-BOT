@@ -2,7 +2,7 @@ import asyncio
 import os
 from pyrogram import Client
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.daily import Daily
+from apscheduler.triggers.interval import IntervalTrigger  # Updated import
 from datetime import datetime
 
 # Load environment variables from .env file
@@ -41,9 +41,9 @@ async def send_cleanup_message():
 # Scheduler to run the removal at 12:00 AM IST daily
 def start_scheduler():
     scheduler = AsyncIOScheduler(timezone="Asia/Kolkata")
-    # Schedule the daily task
-    scheduler.add_job(remove_users, Daily(hour=0, minute=0, second=0))  # Set to 12:00 AM IST
-    scheduler.add_job(send_cleanup_message, Daily(hour=0, minute=0, second=30))  # Send message at 12:00 AM + 30s
+    # Schedule the daily task using IntervalTrigger
+    scheduler.add_job(remove_users, IntervalTrigger(hours=24, minutes=0, seconds=0, start_date=datetime.now()))  # Run every 24 hours
+    scheduler.add_job(send_cleanup_message, IntervalTrigger(hours=24, minutes=0, seconds=30, start_date=datetime.now()))  # Send message 30 seconds after
     scheduler.start()
 
 # Start the bot
